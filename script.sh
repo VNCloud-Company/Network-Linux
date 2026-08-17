@@ -22,14 +22,49 @@ if cat /etc/os-release | grep PRETTY_NAME | grep "Debian" > /dev/null; then
     sleep 3
     reboot
 elif cat /etc/os-release | grep PRETTY_NAME | grep "Ubuntu" > /dev/null; then
-    parted /dev/sda resizepart $(blkid|grep /dev/sda|sort|tail -n 1|cut -c 9) 100%
-    pvresize /dev/sda$(blkid|grep /dev/sda|sort|tail -n 1|cut -c 9)
-    lvextend -l +100%FREE /dev/vg0/lv-0
-    resize2fs /dev/vg0/lv-0
-    clear
-    echo -e " Upgrade Disk Success. VPS Restart After 3 Seconds"
-    sleep 3
-    reboot
+    CFG=$(ls /etc/netplan/*.yaml /etc/netplan/*.yml 2>/dev/null | head -n 1)
+
+    if [ -z "$CFG" ] || [ ! -f "$CFG" ]; then
+        echo "Lỗi: Không tìm thấy file cấu hình netplan trong /etc/netplan/!"
+        exit 1
+    fi
+
+    echo "File cấu hình Netplan: $CFG"
+
+    # Tạo bản sao lưu dự phòng (backup)
+    cp "$CFG" "${CFG}.bak_$(date +%Y%m%d_%H%M%S)"
+
+    # Xử lý Subnet Mask / Prefix (/24 mặc định nếu không truyền)
+    if [[ "$IP_ADDR" != *"/"* ]]; then
+        PREFIX=$(grep -E -o '/[0-9]+' "$CFG" | head -n 1)
+        [ -z "$PREFIX" ] && PREFIX="/24"
+        IP_WITH_PREFIX="${IP_ADDR}${PREFIX}"
+    else
+        IP_WITH_PREFIX="$IP_ADDR"
+    fi
+
+    # Thay thế IPADDR trong Netplan YAML
+    if grep -E -q '-[[:space:]]*[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' "$CFG"; then
+        sed -i -E "s|-[[:space:]]*[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(/[0-9]+)?|- $IP_WITH_PREFIX|" "$CFG"
+        echo "[OK] Đã cập nhật IP thành $IP_WITH_PREFIX"
+    else
+        echo "[Bỏ qua] Không tìm thấy dòng IP thích hợp để thay thế trong $CFG"
+    fi
+
+    # Thay thế GATEWAY trong Netplan YAML
+    if grep -q "gateway4:" "$CFG"; then
+        sed -i -E "s|gateway4:[[:space:]]*.*|gateway4: $GATEWAY_ADDR|" "$CFG"
+        echo "[OK] Đã cập nhật gateway4 thành $GATEWAY_ADDR"
+    elif grep -q "via:" "$CFG"; then
+        sed -i -E "s|via:[[:space:]]*.*|via: $GATEWAY_ADDR|" "$CFG"
+        echo "[OK] Đã cập nhật gateway (via) thành $GATEWAY_ADDR"
+    else
+        echo "[Bỏ qua] Không tìm thấy dòng gateway4/via để thay thế trong $CFG"
+    fi
+
+    echo -e "\n--- CẤU HÌNH MỚI TRONG FILE $CFG ---"
+    cat "$CFG"
+    netplan apply
 elif cat /etc/os-release | grep PRETTY_NAME | grep "CentOS" > /dev/null; then
     # Tự động tìm Network Interface card chính (default route)
     IF=$(ip route | awk '/default/{print $5;exit}')
