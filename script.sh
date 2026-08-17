@@ -117,7 +117,7 @@ elif cat /etc/os-release | grep PRETTY_NAME | grep "AlmaLinux" > /dev/null; then
 
     echo -e "\n--- CẤU HÌNH MỚI TRONG FILE $CFG ---"
     grep -E "^(IPADDR|GATEWAY|NETMASK|DEVICE|BOOTPROTO)=" "$CFG"
-    systemctl restart network
+    nmcli connection reload && nmcli connection up "$IF"
 else
     echo -e "Hệ Điều Hành Không Hợp Lệ"
 fi
