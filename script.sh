@@ -87,7 +87,7 @@ print(f"[OK] Đã cập nhật IP thành {ip_with_prefix}")
 print(f"[OK] Đã cập nhật Gateway thành {gw_arg}")
 EOF
     else
-        # Dự phòng bằng sed nếu máy chưa cài python3
+        # Dự phòng bằng AWK thuần nếu máy chưa cài python3 (hoàn toàn không phụ thuộc Python)
         if [[ "$IP_ADDR" != *"/"* ]]; then
             PREFIX=$(grep -E -o '/[0-9]+' "$CFG" | head -n 1)
             [ -z "$PREFIX" ] && PREFIX="/24"
@@ -96,9 +96,23 @@ EOF
             IP_WITH_PREFIX="$IP_ADDR"
         fi
 
-        sed -i -E "s|gateway4:[[:space:]]*.*|gateway4: $GATEWAY_ADDR|" "$CFG"
-        sed -i -E "s|via:[[:space:]]*.*|via: $GATEWAY_ADDR|" "$CFG"
-        sed -i -E "s|-[[:space:]]*[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(/[0-9]+)?|- $IP_WITH_PREFIX|g" "$CFG"
+        awk -v ip="$IP_WITH_PREFIX" -v gw="$GATEWAY_ADDR" '
+        BEGIN { in_dns=0; ip_done=0 }
+        /nameservers:/ { in_dns=1 }
+        !ip_done && !in_dns && /-[[:space:]]*[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/ {
+            sub(/-[[:space:]]*[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(\/[0-9]+)?/, "- " ip)
+            ip_done=1
+        }
+        /gateway4:[[:space:]]*/ {
+            sub(/gateway4:[[:space:]]*.*/, "gateway4: " gw)
+        }
+        /via:[[:space:]]*/ {
+            sub(/via:[[:space:]]*.*/, "via: " gw)
+        }
+        { print }
+        ' "$CFG" > "${CFG}.tmp" && mv "${CFG}.tmp" "$CFG"
+
+        echo "[OK] Đã cập nhật IP ($IP_WITH_PREFIX) và Gateway ($GATEWAY_ADDR) bằng awk"
     fi
 
     echo -e "\n--- CẤU HÌNH MỚI TRONG FILE $CFG ---"
