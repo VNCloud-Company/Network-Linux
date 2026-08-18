@@ -13,13 +13,44 @@ fi
 
 # Kiểm tra hệ điều hành
 if cat /etc/os-release | grep PRETTY_NAME | grep "Debian" > /dev/null; then
-    parted /dev/sda resizepart $(blkid|grep /dev/sda|sort|tail -n 1|cut -c 9) 100%
-    pvresize /dev/sda$(blkid|grep /dev/sda|sort|tail -n 1|cut -c 9)
-    lvextend -l +100%FREE /dev/vg0/lv-0
-    xfs_growfs /dev/vg0/lv-0
-    echo -e " Upgrade Disk Success. VPS Restart After 3 Seconds"
-    sleep 3
-    reboot
+    FILE="/etc/network/interfaces"
+
+    if [ ! -f "$FILE" ]; then
+        echo "Lỗi: File cấu hình $FILE không tồn tại!"
+        exit 1
+    fi
+
+    echo "File cấu hình Debian: $FILE"
+
+    # Backup file cấu hình
+    cp "$FILE" "$FILE.bak_$(date +%Y%m%d_%H%M%S)"
+
+    # Lấy IP thuần (loại bỏ CIDR /24 nếu người dùng truyền kèm)
+    PLAIN_IP="${IP_ADDR%%/*}"
+
+    # Thay thế hoặc thêm address
+    if grep -q -E "^[[:space:]]*address[[:space:]]+" "$FILE"; then
+        sed -i -E "s|^[[:space:]]*address[[:space:]]+.*|address $PLAIN_IP|" "$FILE"
+        echo "[OK] Đã cập nhật address thành $PLAIN_IP"
+    else
+        echo "address $PLAIN_IP" >> "$FILE"
+        echo "[OK] Đã thêm address $PLAIN_IP"
+    fi
+
+    # Thay thế hoặc thêm gateway
+    if grep -q -E "^[[:space:]]*gateway[[:space:]]+" "$FILE"; then
+        sed -i -E "s|^[[:space:]]*gateway[[:space:]]+.*|gateway $GATEWAY_ADDR|" "$FILE"
+        echo "[OK] Đã cập nhật gateway thành $GATEWAY_ADDR"
+    else
+        echo "gateway $GATEWAY_ADDR" >> "$FILE"
+        echo "[OK] Đã thêm gateway $GATEWAY_ADDR"
+    fi
+
+    echo -e "\n--- CẤU HÌNH MỚI TRONG FILE $FILE ---"
+    cat "$FILE"
+
+    # Khởi động lại dịch vụ mạng Debian
+    systemctl restart networking
 elif cat /etc/os-release | grep PRETTY_NAME | grep "Ubuntu" > /dev/null; then
     # Tìm file cấu hình Netplan
     if [ -f "/etc/netplan/99-netcfg-vmware.yaml" ]; then
