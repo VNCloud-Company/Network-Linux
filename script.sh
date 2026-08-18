@@ -47,8 +47,12 @@ elif cat /etc/os-release | grep PRETTY_NAME | grep "Ubuntu" > /dev/null; then
         IP_WITH_PREFIX="$IP_ADDR"
     fi
 
-    # Thay thế IP và GATEWAY bằng lệnh sed theo yêu cầu
-    sed -i -E "s#([[:space:]]*-[[:space:]]*)[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(/[0-9]+)?#\1$IP_WITH_PREFIX#; s#(gateway4:[[:space:]]*)[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+#\1$GATEWAY_ADDR#" "$FILE"
+    # Thay thế IP (chỉ trong phạm vi trước nameservers) và GATEWAY bằng lệnh sed
+    if grep -q "nameservers:" "$FILE"; then
+        sed -i -E "0,/nameservers:/ s#([[:space:]]*-[[:space:]]*)[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(/[0-9]+)?#\1$IP_WITH_PREFIX#; s#(gateway4:[[:space:]]*)[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+#\1$GATEWAY_ADDR#" "$FILE"
+    else
+        sed -i -E "s#([[:space:]]*-[[:space:]]*)[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(/[0-9]+)?#\1$IP_WITH_PREFIX#; s#(gateway4:[[:space:]]*)[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+#\1$GATEWAY_ADDR#" "$FILE"
+    fi
 
     echo -e "\n--- CẤU HÌNH MỚI TRONG FILE $FILE ---"
     cat "$FILE"
